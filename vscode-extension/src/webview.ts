@@ -11,6 +11,7 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
   #log { white-space: pre-wrap; margin-bottom: 12px; }
   .msg { margin: 6px 0; padding: 6px 8px; border-radius: 4px; background: var(--vscode-editor-inactiveSelectionBackground); }
   .user { font-weight: bold; }
+  .error { color: var(--vscode-errorForeground); border: 1px solid var(--vscode-errorForeground); }
   textarea { width: 100%; box-sizing: border-box; min-height: 60px; }
 </style>
 </head>
@@ -40,7 +41,9 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { send(); }
   });
   window.addEventListener('message', (e) => {
-    if (e.data && e.data.type === 'reply') { add('assistant', 'Assistant', e.data.text); }
+    if (!e.data) { return; }
+    if (e.data.type === 'reply') { add('assistant', 'Assistant', e.data.text); }
+    else if (e.data.type === 'error') { add('error', 'Error', e.data.text); }
   });
 </script>
 </body>
