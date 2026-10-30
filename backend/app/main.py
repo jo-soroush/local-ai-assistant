@@ -1,12 +1,16 @@
+import logging
 import uuid
+from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.datastructures import MutableHeaders
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from .llm.base import ChatMessage, LLMError, LLMProvider
+from .llm.factory import get_provider
 from .schemas import MAX_MESSAGE_CHARS, ChatRequest, ChatResponse
 
 DEFAULT_HOST = "127.0.0.1"
@@ -14,7 +18,18 @@ DEFAULT_PORT = 8765
 # JSON-escaped text can be several times MAX_MESSAGE_CHARS; enforced on bytes actually received.
 MAX_BODY_BYTES = 64 * 1024
 
-app = FastAPI(title="RISE Local AI Assistant Backend", version="0.1.0")
+SYSTEM_PROMPT = "You are a concise, helpful local coding assistant. Answer the user's question directly."
+
+logger = logging.getLogger("rise.backend")
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    get_provider()  # fail fast on invalid configuration
+    yield
+
+
+app = FastAPI(title="RISE Local AI Assistant Backend", version="0.1.0", lifespan=lifespan)
 
 
 def _request_id(request: Request) -> str:
@@ -99,6 +114,12 @@ async def http_error(request: Request, exc: StarletteHTTPException):
     return _error(request, exc.status_code, code, str(exc.detail))
 
 
+@app.exception_handler(LLMError)
+async def llm_error(request: Request, exc: LLMError):
+    logger.warning("llm error %s (request %s)", exc.code, _request_id(request))
+    return _error(request, exc.status_code, exc.code, exc.message)
+
+
 @app.exception_handler(Exception)
 async def unhandled_error(request: Request, exc: Exception):
     return _error(request, 500, "internal_error", "Internal server error.")
@@ -110,12 +131,16 @@ async def health() -> dict[str, str]:
 
 
 @app.post("/v1/chat", response_model=ChatResponse)
-async def chat(body: ChatRequest, request: Request) -> ChatResponse:
-    # C02: deterministic placeholder. No model is called.
-    return ChatResponse(
-        request_id=_request_id(request),
-        reply=f"[backend placeholder] No model is connected yet. You asked: {body.message.strip()}",
+async def chat(
+    body: ChatRequest, request: Request, provider: LLMProvider = Depends(get_provider)
+) -> ChatResponse:
+    reply = await provider.generate(
+        [
+            ChatMessage("system", SYSTEM_PROMPT),
+            ChatMessage("user", body.message.strip()),
+        ]
     )
+    return ChatResponse(request_id=_request_id(request), reply=reply)
 
 
 if __name__ == "__main__":

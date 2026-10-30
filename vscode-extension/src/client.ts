@@ -2,9 +2,9 @@
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
 
 export const DEFAULT_BACKEND_URL = "http://127.0.0.1:8765";
-export const DEFAULT_TIMEOUT_MS = 15000;
+export const DEFAULT_TIMEOUT_MS = 130000;
 const MIN_TIMEOUT_MS = 1000;
-const MAX_TIMEOUT_MS = 120000;
+const MAX_TIMEOUT_MS = 180000;
 
 export class BackendError extends Error {}
 

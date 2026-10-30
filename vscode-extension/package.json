@@ -31,9 +31,9 @@
         },
         "riseAssistant.requestTimeoutMs": {
           "type": "number",
-          "default": 15000,
+          "default": 130000,
           "minimum": 1000,
-          "maximum": 120000,
+          "maximum": 180000,
           "description": "Backend request timeout in milliseconds."
         }
       }

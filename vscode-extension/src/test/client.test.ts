@@ -50,10 +50,10 @@ test("validateBackendUrl rejects non-loopback, non-http, credentials and garbage
 });
 
 test("normalizeTimeout clamps and defaults", () => {
-  assert.equal(normalizeTimeout(undefined), 15000);
-  assert.equal(normalizeTimeout(NaN), 15000);
+  assert.equal(normalizeTimeout(undefined), 130000);
+  assert.equal(normalizeTimeout(NaN), 130000);
   assert.equal(normalizeTimeout(5), 1000);
-  assert.equal(normalizeTimeout(10_000_000), 120000);
+  assert.equal(normalizeTimeout(10_000_000), 180000);
   assert.equal(normalizeTimeout(2500), 2500);
 });
 

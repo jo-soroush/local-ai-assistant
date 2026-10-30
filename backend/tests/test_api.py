@@ -5,10 +5,29 @@ import uuid
 import pytest
 from fastapi.testclient import TestClient
 
+from app.llm.base import ChatMessage
+from app.llm.factory import get_provider
 from app.main import DEFAULT_HOST, DEFAULT_PORT, MAX_BODY_BYTES, app
 from app.schemas import MAX_MESSAGE_CHARS
 
 client = TestClient(app, raise_server_exceptions=False)
+
+
+class FakeProvider:
+    def __init__(self):
+        self.calls = []
+
+    async def generate(self, messages):
+        self.calls.append(messages)
+        return f"fake reply to: {messages[-1].content}"
+
+
+@pytest.fixture(autouse=True)
+def fake_provider():
+    provider = FakeProvider()
+    app.dependency_overrides[get_provider] = lambda: provider
+    yield provider
+    app.dependency_overrides.clear()
 
 
 def assert_error(resp, status, code):
@@ -27,14 +46,16 @@ def test_health():
     assert resp.json() == {"status": "ok"}
 
 
-def test_chat_returns_deterministic_placeholder():
+def test_chat_returns_provider_reply(fake_provider):
     resp = client.post("/v1/chat", json={"message": "  hello  "})
     assert resp.status_code == 200
     body = resp.json()
-    assert body["reply"] == "[backend placeholder] No model is connected yet. You asked: hello"
+    assert body["reply"] == "fake reply to: hello"
     uuid.UUID(body["request_id"])
     assert resp.headers["X-Request-ID"] == body["request_id"]
-    assert client.post("/v1/chat", json={"message": "hello"}).json()["reply"] == body["reply"]
+    roles = [m.role for m in fake_provider.calls[0]]
+    assert roles == ["system", "user"]
+    assert fake_provider.calls[0][1] == ChatMessage("user", "hello")
 
 
 def test_request_ids_are_unique():
@@ -111,7 +132,7 @@ def test_valid_chunked_request_below_limit_is_ok():
     )
     assert resp.request.headers["transfer-encoding"] == "chunked"
     assert resp.status_code == 200
-    assert resp.json()["reply"].endswith("You asked: hello")
+    assert resp.json()["reply"].endswith("fake reply to: hello")
 
 
 def test_body_just_below_limit_is_not_413():
@@ -179,4 +200,36 @@ def test_valid_stream_without_content_length_is_ok():
         [payload[:7], payload[7:]], [("content-type", "application/json")]
     )
     assert status == 200
-    assert body["reply"].endswith("You asked: hello")
+    assert body["reply"].endswith("fake reply to: hello")
+
+
+@pytest.mark.parametrize(
+    "exc_cls, status, code",
+    [
+        ("LLMUnavailable", 503, "llm_unavailable"),
+        ("LLMModelNotFound", 502, "llm_model_not_found"),
+        ("LLMTimeout", 504, "llm_timeout"),
+        ("LLMBadResponse", 502, "llm_bad_response"),
+    ],
+)
+def test_llm_errors_use_structured_contract(exc_cls, status, code):
+    from app.llm import base
+
+    class Failing:
+        async def generate(self, messages):
+            raise getattr(base, exc_cls)("provider problem")
+
+    app.dependency_overrides[get_provider] = lambda: Failing()
+    body = assert_error(client.post("/v1/chat", json={"message": "hi"}), status, code)
+    assert body["error"]["message"] == "provider problem"
+
+
+def test_route_and_extension_do_not_contain_ollama_wire_format():
+    import pathlib
+
+    root = pathlib.Path(__file__).resolve().parents[2]
+    main_src = (root / "backend/app/main.py").read_text().lower()
+    assert "/api/chat" not in main_src and "ollama" not in main_src
+    for f in (root / "vscode-extension/src").glob("*.ts"):
+        text = f.read_text().lower()
+        assert "ollama" not in text and "/api/chat" not in text, f.name
