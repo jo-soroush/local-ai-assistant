@@ -9,4 +9,10 @@ from .ollama import OllamaProvider
 @lru_cache(maxsize=1)
 def get_provider() -> LLMProvider:
     settings = load_settings()
-    return OllamaProvider(settings.ollama_url, settings.ollama_model, settings.llm_timeout_s)
+    return OllamaProvider(
+        settings.ollama_url,
+        settings.ollama_model,
+        settings.llm_timeout_s,
+        settings.ollama_num_ctx,
+        settings.max_response_tokens,
+    )

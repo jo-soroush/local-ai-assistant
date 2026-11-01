@@ -177,7 +177,7 @@ def _raw_asgi_post(chunks, headers):
 
 
 def test_oversized_stream_without_content_length_is_413():
-    chunks = [b"a" * 16384] * 5  # 80 KiB total, no Content-Length header at all
+    chunks = [b"a" * 16384] * (MAX_BODY_BYTES // 16384 + 2)  # over the limit, no Content-Length header
     status, headers, body = _raw_asgi_post(chunks, [("content-type", "application/json")])
     assert status == 413
     assert body["error"]["code"] == "payload_too_large"
@@ -186,7 +186,7 @@ def test_oversized_stream_without_content_length_is_413():
 
 
 def test_understated_content_length_cannot_bypass_limit():
-    chunks = [b"a" * 16384] * 5
+    chunks = [b"a" * 16384] * (MAX_BODY_BYTES // 16384 + 2)
     status, _, body = _raw_asgi_post(
         chunks, [("content-type", "application/json"), ("content-length", "10")]
     )
@@ -210,6 +210,7 @@ def test_valid_stream_without_content_length_is_ok():
         ("LLMModelNotFound", 502, "llm_model_not_found"),
         ("LLMTimeout", 504, "llm_timeout"),
         ("LLMBadResponse", 502, "llm_bad_response"),
+        ("LLMContextTooLarge", 422, "context_too_large"),
     ],
 )
 def test_llm_errors_use_structured_contract(exc_cls, status, code):

@@ -43,3 +43,8 @@ class LLMTimeout(LLMError):
 class LLMBadResponse(LLMError):
     status_code = 502
     code = "llm_bad_response"
+
+
+class LLMContextTooLarge(LLMError):
+    status_code = 422
+    code = "context_too_large"

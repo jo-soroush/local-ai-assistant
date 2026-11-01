@@ -71,6 +71,23 @@ test("postChat sends JSON and returns reply", async () => {
   );
 });
 
+test("postChat includes context only when provided", async () => {
+  const ctx = { kind: "selection" as const, path: "a.py", start_line: 1, end_line: 2, text: "x = 1" };
+  const bodies: unknown[] = [];
+  await withServer(
+    (_q, res, body) => {
+      bodies.push(JSON.parse(body));
+      json(res, 200, { request_id: "r", reply: "ok" });
+    },
+    async (url) => {
+      await postChat(url, "q", 2000, ctx);
+      await postChat(url, "q", 2000);
+    }
+  );
+  assert.deepEqual(bodies[0], { message: "q", context: ctx });
+  assert.deepEqual(bodies[1], { message: "q" });
+});
+
 test("postChat surfaces backend validation error with request id", async () => {
   await withServer(
     (_req, res) =>

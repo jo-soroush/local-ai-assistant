@@ -22,6 +22,8 @@ Configuration (environment variables, read at startup; the Ollama URL must be an
 | `RISE_OLLAMA_URL` | `http://127.0.0.1:11434` |
 | `RISE_OLLAMA_MODEL` | `qwen2.5-coder:7b` |
 | `RISE_LLM_TIMEOUT_S` | `120` |
+| `RISE_OLLAMA_NUM_CTX` | `8192` (capped at the model's own limit from `/api/show`) |
+| `RISE_MAX_RESPONSE_TOKENS` | `2048` (reserved for the reply; must be <= half of `RISE_OLLAMA_NUM_CTX`) |
 
 ## Run (127.0.0.1:8765)
 ```bash
@@ -39,9 +41,11 @@ curl -X POST http://127.0.0.1:8765/v1/chat -H 'Content-Type: application/json' -
 ## API
 - `GET /health` -> `{"status":"ok"}`
 - `POST /v1/chat` `{"message": "<1..4000 chars, not blank>"}` -> `{"request_id","reply"}` (model-generated)
+- Optional `context` on `/v1/chat`: `{kind: selection|file, path (workspace-relative), language?, start_line, end_line, text (<=16,000 chars)}`. The path is display metadata only; the backend never opens files. Code is passed to the model in a fenced block marked as data.
+- Context budget: the adapter sends `truncate=false`/`shift=false` so Ollama refuses instead of silently dropping the start of a prompt, and checks that system prompt + question + code + reply allowance fit. Every request is measured by the server: the adapter asks Ollama for the exact prompt-token count (including whatever chat template the model applies), with no byte-length shortcut. The reply allowance (`RISE_MAX_RESPONSE_TOKENS`) is reserved out of the window, so the prompt must fit in `window - allowance`. A request that does not fit is rejected with 422 `context_too_large` before normal generation starts, and is never truncated. Before the first request the adapter probes once that the server really rejects oversized prompts, and refuses to send anything if it does not. This costs one extra short server call per request (the token count). A reply that hits the token limit is marked `[Response cut off ...]`.
 - LLM errors: 503 `llm_unavailable`, 502 `llm_model_not_found` / `llm_bad_response`, 504 `llm_timeout`. `/health` does not check Ollama.
 - Errors: `{"error":{"code","message"},"request_id"}` with 404/405/413/422/500. Every response carries `X-Request-ID`.
-- Body guard: bodies over 64 KiB (counted on received bytes, including chunked) get 413.
+- Body guard: bodies over 256 KiB (counted on received bytes, including chunked) get 413.
 
 ## Test
 ```bash

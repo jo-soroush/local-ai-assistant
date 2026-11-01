@@ -1,4 +1,6 @@
 // HTTP client for the local backend. Loopback only; no cloud endpoints.
+import type { EditorContextPayload } from "./context";
+
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
 
 export const DEFAULT_BACKEND_URL = "http://127.0.0.1:8765";
@@ -45,7 +47,8 @@ export function validateBackendUrl(raw: string): string {
 export async function postChat(
   baseUrl: string,
   message: string,
-  timeoutMs: number = DEFAULT_TIMEOUT_MS
+  timeoutMs: number = DEFAULT_TIMEOUT_MS,
+  context?: EditorContextPayload
 ): Promise<ChatResult> {
   const origin = validateBackendUrl(baseUrl);
   const timeout = normalizeTimeout(timeoutMs);
@@ -58,7 +61,7 @@ export async function postChat(
     response = await fetch(`${origin}/v1/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message }),
+      body: JSON.stringify(context ? { message, context } : { message }),
       signal,
       redirect: "error",
     });

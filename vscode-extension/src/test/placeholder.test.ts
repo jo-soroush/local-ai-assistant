@@ -21,3 +21,11 @@ test("webview html has strict CSP with nonce and no remote URLs", () => {
   assert.match(html, /script-src 'nonce-abc123'/);
   assert.doesNotMatch(html, /https?:\/\//);
 });
+
+test("webview shows the context checkbox (default on) and keeps the strict CSP", () => {
+  const html = getWebviewHtml("n", "vscode-resource:");
+  assert.match(html, /<input type="checkbox" id="useContext" checked>/);
+  assert.match(html, /Include editor context/);
+  assert.match(html, /default-src 'none'/);
+  assert.doesNotMatch(html, /connect-src/);
+});

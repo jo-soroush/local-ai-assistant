@@ -5,7 +5,10 @@
       "name": "Run RISE Assistant Extension",
       "type": "extensionHost",
       "request": "launch",
-      "args": ["--extensionDevelopmentPath=${workspaceFolder}/vscode-extension"],
+      "args": [
+        "${workspaceFolder}/dev-workspace",
+        "--extensionDevelopmentPath=${workspaceFolder}/vscode-extension"
+      ],
       "outFiles": ["${workspaceFolder}/vscode-extension/out/**/*.js"],
       "preLaunchTask": "compile-extension"
     }

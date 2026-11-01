@@ -17,3 +17,10 @@ npm test             # compile + node --test
 4. Type a message and click Send (or Cmd/Ctrl+Enter). A model reply appears (backend and Ollama must be running; see backend/README.md).
 
 Debug: set breakpoints in `src/*.ts` in the original window; source maps are generated.
+
+## Editor context (C04)
+The panel has an **Include editor context** checkbox (on by default) and a line showing exactly what will be sent.
+- Non-empty selection: the selected text. Otherwise the whole active file.
+- Only saved `file:` documents inside the open workspace (symlinks resolved) are eligible. Max 16,000 characters; nothing is clipped.
+- `.env`, `.env.*`, `*.pem`, `*.key`, `*.ppk`, `*.p12`, `*.pfx`, `id_*` SSH keys, files under `.ssh/` (except `.pub`) and any text containing a private key are never sent.
+- If context is requested but unusable, the question is **not** sent and the reason is shown. Uncheck the box to ask without code.

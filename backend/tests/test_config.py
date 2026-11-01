@@ -42,3 +42,19 @@ def test_non_loopback_or_invalid_url_rejected(url):
 def test_bad_timeout_rejected(value):
     with pytest.raises(ConfigError):
         load_settings({"RISE_LLM_TIMEOUT_S": value})
+
+
+def test_num_ctx_default_override_and_validation():
+    assert load_settings({}).ollama_num_ctx == 8192
+    assert load_settings({"RISE_OLLAMA_NUM_CTX": "4096"}).ollama_num_ctx == 4096
+    for bad in ("abc", "10", "999999", "-1"):
+        with pytest.raises(ConfigError):
+            load_settings({"RISE_OLLAMA_NUM_CTX": bad})
+
+
+def test_max_response_tokens_default_override_and_validation():
+    assert load_settings({}).max_response_tokens == 2048
+    assert load_settings({"RISE_MAX_RESPONSE_TOKENS": "512"}).max_response_tokens == 512
+    for bad in ("abc", "1", "5000", "-3"):  # 5000 > half of the default 8192 window
+        with pytest.raises(ConfigError):
+            load_settings({"RISE_MAX_RESPONSE_TOKENS": bad})

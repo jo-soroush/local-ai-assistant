@@ -9,16 +9,16 @@ from starlette.datastructures import MutableHeaders
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from .llm.base import ChatMessage, LLMError, LLMProvider
+from .llm.base import LLMError, LLMProvider
 from .llm.factory import get_provider
+from .prompt import build_messages
 from .schemas import MAX_MESSAGE_CHARS, ChatRequest, ChatResponse
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
-# JSON-escaped text can be several times MAX_MESSAGE_CHARS; enforced on bytes actually received.
-MAX_BODY_BYTES = 64 * 1024
-
-SYSTEM_PROMPT = "You are a concise, helpful local coding assistant. Answer the user's question directly."
+# Message plus 16k chars of context, worst-case JSON-escaped (6 bytes/char), fits with headroom.
+# Enforced on bytes actually received.
+MAX_BODY_BYTES = 256 * 1024
 
 logger = logging.getLogger("rise.backend")
 
@@ -134,12 +134,7 @@ async def health() -> dict[str, str]:
 async def chat(
     body: ChatRequest, request: Request, provider: LLMProvider = Depends(get_provider)
 ) -> ChatResponse:
-    reply = await provider.generate(
-        [
-            ChatMessage("system", SYSTEM_PROMPT),
-            ChatMessage("user", body.message.strip()),
-        ]
-    )
+    reply = await provider.generate(build_messages(body.message, body.context))
     return ChatResponse(request_id=_request_id(request), reply=reply)
 
 
