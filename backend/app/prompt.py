@@ -1,7 +1,7 @@
 import re
 
 from .llm.base import ChatMessage
-from .schemas import EditorContext
+from .schemas import EditorContext, ToolResult
 
 SYSTEM_PROMPT = "You are a concise, helpful local coding assistant. Answer the user's question directly."
 CONTEXT_NOTE = (
@@ -16,16 +16,25 @@ def _fence(text: str) -> str:
     return "`" * max(3, longest + 1)
 
 
-def build_messages(message: str, context: EditorContext | None) -> list[ChatMessage]:
+def _block(header: str, text: str, language: str = "") -> str:
+    fence = _fence(text)
+    return f"{header}\n{fence}{language}\n{text}\n{fence}"
+
+
+def build_messages(
+    message: str, context: EditorContext | None, tool_results: list[ToolResult] | None = None
+) -> list[ChatMessage]:
     question = message.strip()
-    if context is None:
+    tool_results = tool_results or []
+    if context is None and not tool_results:
         return [ChatMessage("system", SYSTEM_PROMPT), ChatMessage("user", question)]
 
-    fence = _fence(context.text)
-    what = "Selected code from" if context.kind == "selection" else "Contents of"
-    header = f"{what} {context.path} (lines {context.start_line}-{context.end_line}):"
-    block = f"{fence}{context.language or ''}\n{context.text}\n{fence}"
-    return [
-        ChatMessage("system", SYSTEM_PROMPT + CONTEXT_NOTE),
-        ChatMessage("user", f"{question}\n\n{header}\n{block}"),
-    ]
+    parts = [question]
+    if context is not None:
+        what = "Selected code from" if context.kind == "selection" else "Contents of"
+        header = f"{what} {context.path} (lines {context.start_line}-{context.end_line}):"
+        parts.append(_block(header, context.text, context.language or ""))
+    for result in tool_results:
+        header = f"Workspace file {result.path} (lines {result.start_line}-{result.end_line}), read by the user via read_file:"
+        parts.append(_block(header, result.text))
+    return [ChatMessage("system", SYSTEM_PROMPT + CONTEXT_NOTE), ChatMessage("user", "\n\n".join(parts))]

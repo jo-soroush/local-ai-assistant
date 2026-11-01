@@ -16,7 +16,7 @@ from .schemas import MAX_MESSAGE_CHARS, ChatRequest, ChatResponse
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
-# Message plus 16k chars of context, worst-case JSON-escaped (6 bytes/char), fits with headroom.
+# Message plus 16k chars of context and 16k of attached file, worst-case JSON-escaped (6 bytes/char), fits with headroom.
 # Enforced on bytes actually received.
 MAX_BODY_BYTES = 256 * 1024
 
@@ -134,7 +134,7 @@ async def health() -> dict[str, str]:
 async def chat(
     body: ChatRequest, request: Request, provider: LLMProvider = Depends(get_provider)
 ) -> ChatResponse:
-    reply = await provider.generate(build_messages(body.message, body.context))
+    reply = await provider.generate(build_messages(body.message, body.context, body.tool_results))
     return ChatResponse(request_id=_request_id(request), reply=reply)
 
 

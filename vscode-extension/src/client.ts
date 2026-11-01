@@ -1,5 +1,6 @@
 // HTTP client for the local backend. Loopback only; no cloud endpoints.
 import type { EditorContextPayload } from "./context";
+import type { ReadFilePayload } from "./workspace";
 
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
 
@@ -48,7 +49,8 @@ export async function postChat(
   baseUrl: string,
   message: string,
   timeoutMs: number = DEFAULT_TIMEOUT_MS,
-  context?: EditorContextPayload
+  context?: EditorContextPayload,
+  toolResults?: ReadFilePayload[]
 ): Promise<ChatResult> {
   const origin = validateBackendUrl(baseUrl);
   const timeout = normalizeTimeout(timeoutMs);
@@ -61,7 +63,11 @@ export async function postChat(
     response = await fetch(`${origin}/v1/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(context ? { message, context } : { message }),
+      body: JSON.stringify({
+        message,
+        ...(context ? { context } : {}),
+        ...(toolResults && toolResults.length > 0 ? { tool_results: toolResults } : {}),
+      }),
       signal,
       redirect: "error",
     });

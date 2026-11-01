@@ -13,6 +13,7 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
   .user { font-weight: bold; }
   .note { opacity: 0.75; font-size: 0.9em; }
   #ctx { margin: 6px 0; font-size: 0.9em; }
+  #att { margin: 6px 0; font-size: 0.9em; }
   #ctx.warn { color: var(--vscode-errorForeground); }
   .error { color: var(--vscode-errorForeground); border: 1px solid var(--vscode-errorForeground); }
   textarea { width: 100%; box-sizing: border-box; min-height: 60px; }
@@ -22,6 +23,7 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
 <div id="log"></div>
 <div id="ctx"></div>
 <label><input type="checkbox" id="useContext" checked> Include editor context</label>
+<div id="att"><button id="attach">Attach workspace file…</button> <span id="attText"></span> <button id="detach" hidden>Remove</button></div>
 <textarea id="input" placeholder="Ask the assistant (Ctrl/Cmd+Enter to send)"></textarea>
 <button id="send">Send</button>
 <script nonce="${nonce}">
@@ -45,6 +47,10 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
   }
   useContext.addEventListener('change', renderCtx);
   renderCtx();
+  const attText = document.getElementById('attText');
+  const detach = document.getElementById('detach');
+  document.getElementById('attach').addEventListener('click', () => vscode.postMessage({ type: 'attachFile' }));
+  detach.addEventListener('click', () => vscode.postMessage({ type: 'clearAttachment' }));
   function add(cls, label, text) {
     const d = document.createElement('div');
     d.className = 'msg ' + cls;
@@ -67,6 +73,10 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
     if (e.data.type === 'reply') { add('assistant', 'Assistant', e.data.text); }
     else if (e.data.type === 'error') { add('error', 'Error', e.data.text); }
     else if (e.data.type === 'note') { add('note', 'Sent', e.data.text); }
+    else if (e.data.type === 'attachment') {
+      attText.textContent = e.data.text ? 'Will send file: ' + e.data.text : '';
+      detach.hidden = !e.data.text;
+    }
     else if (e.data.type === 'context') { ctxState = { ok: !!e.data.ok, text: String(e.data.text) }; renderCtx(); }
   });
 </script>

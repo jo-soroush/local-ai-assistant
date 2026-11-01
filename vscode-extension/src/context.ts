@@ -42,17 +42,17 @@ const HINT = "Uncheck \"Include editor context\" to ask without it.";
 const fail = (message: string): ContextResult => ({ ok: false, message: `${message} ${HINT}` });
 
 const SENSITIVE_NAMES = /^(\.env(\..*)?|id_(rsa|dsa|ecdsa|ed25519)(_.*)?|.*\.(pem|key|ppk|p12|pfx))$/i;
-const PRIVATE_KEY_TEXT = /-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/;
+export const PRIVATE_KEY_TEXT =/-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----/;
 
-function isSensitivePath(p: string): boolean {
+export function isSensitivePath(p: string): boolean {
   const parts = p.split(/[\\/]/);
-  if (parts.includes(".ssh")) {
+  if (parts.some((p) => p.toLowerCase() === ".ssh")) {
     return !/\.pub$/i.test(parts[parts.length - 1]);
   }
   return SENSITIVE_NAMES.test(parts[parts.length - 1]);
 }
 
-function relativeInside(root: string, target: string): string | undefined {
+export function relativeInside(root: string, target: string): string | undefined {
   const rel = path.relative(root, target);
   if (!rel || rel === ".." || rel.startsWith(".." + path.sep) || path.isAbsolute(rel)) {
     return undefined;

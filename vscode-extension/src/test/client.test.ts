@@ -154,3 +154,21 @@ test("postChat refuses redirects and non-loopback URLs without connecting", asyn
   );
   await assert.rejects(postChat("http://example.com", "x", 1000), /not loopback/);
 });
+
+test("postChat sends tool_results only when provided (fetch stub, no socket)", async () => {
+  const realFetch = globalThis.fetch;
+  const bodies: unknown[] = [];
+  globalThis.fetch = (async (_url: unknown, init?: RequestInit) => {
+    bodies.push(JSON.parse(String(init?.body)));
+    return new Response(JSON.stringify({ request_id: "r1", reply: "ok" }), { status: 200 });
+  }) as typeof fetch;
+  try {
+    const file = { tool: "read_file" as const, path: "a.py", start_line: 1, end_line: 1, text: "x" };
+    await postChat("http://127.0.0.1:8765", "hi", 1000, undefined, [file]);
+    await postChat("http://127.0.0.1:8765", "hi", 1000, undefined, []);
+    await postChat("http://127.0.0.1:8765", "hi");
+    assert.deepEqual(bodies, [{ message: "hi", tool_results: [file] }, { message: "hi" }, { message: "hi" }]);
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
