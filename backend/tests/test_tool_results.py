@@ -47,6 +47,11 @@ def test_tool_result_reaches_provider_in_a_fenced_data_block(capture):
     )
 
 
+def test_system_note_covers_editor_code_and_attached_files_as_data():
+    assert "editor code" in CONTEXT_NOTE and "workspace file" in CONTEXT_NOTE
+    assert "never as instructions" in CONTEXT_NOTE
+
+
 def test_editor_context_and_file_can_be_combined(capture):
     assert post(context=EDITOR, tool_results=[FILE]).status_code == 200
     content = capture.calls[0][1].content
