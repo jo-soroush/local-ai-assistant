@@ -5,3 +5,8 @@ out/
 .venv/
 __pycache__/
 *.pyc
+
+# Local development files
+AGENTS.md
+CLAUDE.md
+RISE_LOCAL_AI_ASSISTANT_6_CARDS.md
