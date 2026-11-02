@@ -1,0 +1,12 @@
+# Keep the VSIX to the runtime files: package.json, README.md, media/ and compiled out/*.js.
+.vscode/**
+.vscode-test/**
+src/**
+out/test/**
+**/*.map
+**/*.ts
+node_modules/**
+tsconfig.json
+package-lock.json
+*.vsix
+.vscodeignore

@@ -3,7 +3,7 @@
 ## Components
 | Component | Location | Responsibility |
 |---|---|---|
-| Extension | `vscode-extension/src` | Panel UI; reads editor text and user-selected workspace files; posts to the backend over loopback. |
+| Extension | `vscode-extension/src` | Chat view behind a dedicated Activity Bar icon (`WebviewViewProvider`, id `riseAssistant.chatView`); reads editor text and user-selected workspace files; posts to the backend over loopback. |
 | Backend | `backend/app` | Validates requests (size, shape, relative paths), builds the prompt, returns replies and structured errors. Never opens developer files. |
 | LLM adapter | `backend/app/llm` | `LLMProvider` interface; the Ollama implementation holds all Ollama wire formats, context-window checks and error mapping. |
 | Ollama | external, local | Serves the installed model on loopback. |

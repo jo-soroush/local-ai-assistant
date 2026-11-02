@@ -19,7 +19,7 @@ This is a prototype, **not production ready** and **not an approved RISE deploym
 - Only tested on one macOS machine. Windows and Linux are untested.
 - One attached file and one editor selection or file per message, 16,000 characters each; larger content is refused, never trimmed.
 - File search is by name only, up to 50 results (500 candidates examined first).
-- The long default timeout (130 s) means a stuck model leaves the panel waiting.
+- The long default timeout (130 s) means a stuck model leaves the chat view waiting.
 - Answer quality with a 7B model is untested beyond the demos listed in VERIFICATION.md.
 - No automated GUI test; the webview and `extension.ts` wiring depend on manual checks.
 
