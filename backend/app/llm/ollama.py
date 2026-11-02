@@ -18,6 +18,7 @@ from .base import (
     LLMModelNotFound,
     LLMTimeout,
     LLMUnavailable,
+    ModelInfo,
 )
 
 CONNECT_TIMEOUT_S = 3.0
@@ -43,6 +44,9 @@ class OllamaProvider:
         self._transport = transport
         self._window: int | None = None  # min(configured num_ctx, model's own limit)
         self._overflow_rejection_verified = False
+
+    def model_info(self) -> ModelInfo:
+        return ModelInfo(provider="Ollama", model=self._model)
 
     async def generate(self, messages: list[ChatMessage]) -> str:
         wire = [{"role": m.role, "content": m.content} for m in messages]

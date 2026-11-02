@@ -2,7 +2,7 @@ import { test } from "node:test";
 import * as assert from "node:assert/strict";
 import * as http from "node:http";
 import { AddressInfo } from "node:net";
-import { BackendError, normalizeTimeout, postChat, validateBackendUrl } from "../client";
+import { BackendError, BackendOfflineError, getModelInfo, normalizeTimeout, postChat, validateBackendUrl } from "../client";
 
 type Handler = (req: http.IncomingMessage, res: http.ServerResponse, body: string) => void;
 
@@ -171,4 +171,108 @@ test("postChat sends tool_results only when provided (fetch stub, no socket)", a
   } finally {
     globalThis.fetch = realFetch;
   }
+});
+
+// ---- getModelInfo ----
+
+async function withFetch<T>(stub: typeof fetch, fn: () => Promise<T>): Promise<T> {
+  const real = globalThis.fetch;
+  globalThis.fetch = stub;
+  try {
+    return await fn();
+  } finally {
+    globalThis.fetch = real;
+  }
+}
+
+const jsonResponse = (payload: unknown, status = 200) => new Response(JSON.stringify(payload), { status });
+
+test("getModelInfo returns the provider and model the backend reports, via GET /v1/model-info", async () => {
+  let seen: { url: string; method?: string; redirect?: string } | undefined;
+  const info = await withFetch(
+    (async (url: string, init?: RequestInit) => {
+      seen = { url, method: init?.method, redirect: init?.redirect };
+      return jsonResponse({ provider: "Ollama", model: "my-custom-model:3b" });
+    }) as unknown as typeof fetch,
+    () => getModelInfo("http://127.0.0.1:8765/")
+  );
+  assert.deepEqual(info, { provider: "Ollama", model: "my-custom-model:3b" });
+  assert.deepEqual(seen, { url: "http://127.0.0.1:8765/v1/model-info", method: "GET", redirect: "error" });
+});
+
+test("getModelInfo reports an unreachable backend as BackendOfflineError", async () => {
+  await withFetch(
+    (async () => {
+      throw new TypeError("fetch failed");
+    }) as unknown as typeof fetch,
+    async () => {
+      await assert.rejects(getModelInfo("http://127.0.0.1:8765"), BackendOfflineError);
+    }
+  );
+});
+
+test("getModelInfo reports a timeout as BackendOfflineError", async () => {
+  await withFetch(
+    (async () => {
+      const e = new Error("timed out");
+      e.name = "TimeoutError";
+      throw e;
+    }) as unknown as typeof fetch,
+    async () => {
+      await assert.rejects(getModelInfo("http://127.0.0.1:8765"), BackendOfflineError);
+    }
+  );
+});
+
+test("getModelInfo rejects HTTP errors and malformed answers with a plain BackendError (not 'offline')", async () => {
+  const cases: Array<[string, () => Response]> = [
+    ["404", () => jsonResponse({ error: { code: "not_found", message: "x" } }, 404)],
+    ["not json", () => new Response("<html>", { status: 200 })],
+    ["missing model", () => jsonResponse({ provider: "Ollama" })],
+    ["empty model", () => jsonResponse({ provider: "Ollama", model: "  " })],
+    ["wrong type", () => jsonResponse({ provider: "Ollama", model: 7 })],
+    ["too long", () => jsonResponse({ provider: "Ollama", model: "m".repeat(500) })],
+    ["null", () => jsonResponse(null)],
+  ];
+  for (const [name, make] of cases) {
+    await withFetch((async () => make()) as unknown as typeof fetch, async () => {
+      await assert.rejects(
+        getModelInfo("http://127.0.0.1:8765"),
+        (err: unknown) => err instanceof BackendError && !(err instanceof BackendOfflineError),
+        name
+      );
+    });
+  }
+});
+
+test("getModelInfo applies the same loopback-only URL validation and never calls fetch for a bad URL", async () => {
+  let called = false;
+  await withFetch(
+    (async () => {
+      called = true;
+      return jsonResponse({});
+    }) as unknown as typeof fetch,
+    async () => {
+      for (const bad of ["http://example.com", "https://127.0.0.1:8765", "http://user:pw@127.0.0.1:8765", "nope"]) {
+        await assert.rejects(getModelInfo(bad), (e: unknown) => e instanceof BackendError && !(e instanceof BackendOfflineError), bad);
+      }
+    }
+  );
+  assert.equal(called, false);
+});
+
+test("getModelInfo works against a real local server and sees a stopped server as offline", async () => {
+  let url = "";
+  await withServer(
+    (req, res) => {
+      assert.equal(req.method, "GET");
+      assert.equal(req.url, "/v1/model-info");
+      json(res, 200, { provider: "Ollama", model: "qwen2.5-coder:7b" });
+    },
+    async (u) => {
+      url = u;
+      assert.deepEqual(await getModelInfo(u), { provider: "Ollama", model: "qwen2.5-coder:7b" });
+    }
+  );
+  await assert.rejects(getModelInfo(url), BackendOfflineError); // the server is closed now
 });

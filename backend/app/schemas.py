@@ -108,6 +108,11 @@ class ChatResponse(BaseModel):
     reply: str
 
 
+class ModelInfoResponse(BaseModel):
+    provider: str
+    model: str
+
+
 class ErrorDetail(BaseModel):
     code: str
     message: str

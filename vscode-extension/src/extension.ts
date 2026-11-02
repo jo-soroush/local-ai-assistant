@@ -1,6 +1,6 @@
 import * as crypto from "crypto";
 import * as vscode from "vscode";
-import { BackendError, DEFAULT_BACKEND_URL, DEFAULT_TIMEOUT_MS, postChat } from "./client";
+import { BackendError, BackendOfflineError, DEFAULT_BACKEND_URL, DEFAULT_TIMEOUT_MS, getModelInfo, postChat } from "./client";
 import { ContextResult, EditorTracker, extractContext } from "./context";
 import { Outbox, ViewHolder } from "./view";
 import { getWebviewHtml } from "./webview";
@@ -122,8 +122,37 @@ function postContextPreview(): void {
   postCurrent({ type: "context", ok: r.ok, text: r.ok ? r.summary : r.message });
 }
 
-/** Brings a (re)resolved or re-shown view up to date: what would be sent, and any pending attachment. */
+// Newest model-info request wins; an older answer that arrives late is dropped.
+let modelInfoSeq = 0;
+
+/**
+ * Shows the provider and model the backend is configured with. It is asked from the backend (never from the
+ * model) each time, and the old value is replaced by "checking" first, so a stopped backend is never shown
+ * with a stale model name.
+ */
+async function refreshModelInfo(): Promise<void> {
+  const view = views.get();
+  if (!view) {
+    return;
+  }
+  const seq = ++modelInfoSeq;
+  postTo(view, { type: "modelInfo", state: "checking" });
+  let message: WebviewMessage;
+  try {
+    const url = vscode.workspace.getConfiguration("riseAssistant").get<string>("backendUrl", DEFAULT_BACKEND_URL);
+    const info = await getModelInfo(url);
+    message = { type: "modelInfo", state: "ok", provider: info.provider, model: info.model };
+  } catch (err) {
+    message = { type: "modelInfo", state: err instanceof BackendOfflineError ? "offline" : "unavailable" };
+  }
+  if (seq === modelInfoSeq) {
+    postTo(view, message);
+  }
+}
+
+/** Brings a (re)resolved or re-shown view up to date: what would be sent, any pending attachment, and the model. */
 function syncView(): void {
+  void refreshModelInfo();
   postContextPreview();
   postCurrent({ type: "attachment", text: attachments.peek() ? attachmentSummary : "" });
 }
@@ -198,6 +227,7 @@ async function handleMessage(view: vscode.WebviewView, msg: unknown): Promise<vo
   } catch (err) {
     const text = err instanceof BackendError ? err.message : "Unexpected error contacting the backend.";
     post({ type: "error", text });
+    void refreshModelInfo(); // the backend may have stopped: do not keep showing an old model as active
   }
 }
 
@@ -211,7 +241,7 @@ class ChatViewProvider implements vscode.WebviewViewProvider {
     const outbox = new Outbox<WebviewMessage>(
       (message) => view.webview.postMessage(message),
       () => views.isCurrent(view),
-      new Set(["context", "attachment"])
+      new Set(["context", "attachment", "modelInfo"])
     );
     outboxes.set(view, outbox);
     view.webview.options = { enableScripts: true, localResourceRoots: [] };

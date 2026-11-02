@@ -210,7 +210,7 @@ function makeView(): FakeView {
   return v;
 }
 
-const calls = { inputBox: 0, quickPick: 0, executed: [] as string[], fetch: [] as any[] };
+const calls = { inputBox: 0, quickPick: 0, executed: [] as string[], fetch: [] as any[], modelInfo: 0 };
 const registered: { provider?: any; options?: any; id?: string; commands: Record<string, Handler> } = { commands: {} };
 const disposable = { dispose() {} };
 const fakeVscode = {
@@ -248,7 +248,14 @@ Module._load = realLoad;
 
 const realFetch = globalThis.fetch;
 let nextReply: () => Response | Promise<Response> = () => new Response("{}", { status: 500 });
-globalThis.fetch = (async (_url: unknown, init?: RequestInit) => {
+// Model-info lookups (GET /v1/model-info) are counted apart from chat requests (POST /v1/chat).
+let nextModelInfo: () => Response | Promise<Response> = () =>
+  new Response(JSON.stringify({ provider: "Ollama", model: "qwen2.5-coder:7b" }), { status: 200 });
+globalThis.fetch = (async (url: unknown, init?: RequestInit) => {
+  if (String(url).endsWith("/v1/model-info")) {
+    calls.modelInfo++;
+    return nextModelInfo();
+  }
   calls.fetch.push(JSON.parse(String(init?.body)));
   return nextReply();
 }) as typeof fetch;
@@ -386,6 +393,94 @@ test("disposing the current view discards its attachment and queued messages", a
   assert.equal(calls.fetch[0].tool_results, undefined, "attachment did not survive disposal");
   assert.ok(!replies(next).includes("reply:late"));
   next.dispose();
+});
+
+// ---- model information line ----
+
+const modelStates = (v: FakeView) => v.posted.filter((m) => m.type === "modelInfo");
+const lastModel = (v: FakeView) => modelStates(v).pop();
+
+test("opening the chat view shows the configured provider and model, replacing 'checking'", async () => {
+  nextModelInfo = () => new Response(JSON.stringify({ provider: "Ollama", model: "custom:1b" }), { status: 200 });
+  const v = resolve();
+  await tick();
+  assert.deepEqual(lastModel(v), { type: "modelInfo", state: "ok", provider: "Ollama", model: "custom:1b" });
+  v.dispose();
+});
+
+test("an unreachable backend shows offline and never a previous model", async () => {
+  nextModelInfo = () => Promise.reject(new TypeError("fetch failed"));
+  const v = resolve();
+  await tick();
+  assert.deepEqual(lastModel(v), { type: "modelInfo", state: "offline" });
+  assert.ok(modelStates(v).every((m) => m.model === undefined), "no model name was ever posted");
+  v.dispose();
+});
+
+test("showing the view again re-checks: a backend that stopped is no longer shown with an old model", async () => {
+  nextModelInfo = () => new Response(JSON.stringify({ provider: "Ollama", model: "qwen2.5-coder:7b" }), { status: 200 });
+  const v = resolve();
+  await tick();
+  assert.equal(lastModel(v).state, "ok");
+  nextModelInfo = () => Promise.reject(new TypeError("fetch failed"));
+  await v.show();
+  await tick();
+  assert.deepEqual(lastModel(v), { type: "modelInfo", state: "offline" });
+  v.dispose();
+});
+
+test("a failed chat request re-checks the model line", async () => {
+  nextModelInfo = () => new Response(JSON.stringify({ provider: "Ollama", model: "qwen2.5-coder:7b" }), { status: 200 });
+  const v = resolve();
+  await tick();
+  calls.modelInfo = 0;
+  nextReply = () => Promise.reject(new TypeError("fetch failed"));
+  nextModelInfo = () => Promise.reject(new TypeError("fetch failed"));
+  await v.send(ask("hello"));
+  await tick();
+  assert.equal(calls.modelInfo, 1);
+  assert.deepEqual(lastModel(v), { type: "modelInfo", state: "offline" });
+  v.dispose();
+});
+
+test("a successful chat request does not ask the backend about the model again", async () => {
+  const v = resolve();
+  await tick();
+  calls.modelInfo = 0;
+  nextReply = reply("fine");
+  await v.send(ask("hello"));
+  await tick();
+  assert.equal(calls.modelInfo, 0);
+  v.dispose();
+});
+
+test("an older, slower model-info answer cannot overwrite a newer one", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  nextModelInfo = async () => {
+    await gate;
+    return new Response(JSON.stringify({ provider: "Ollama", model: "OLD" }), { status: 200 });
+  };
+  const v = resolve(); // first lookup is held back
+  await tick();
+  nextModelInfo = () => new Response(JSON.stringify({ provider: "Ollama", model: "NEW" }), { status: 200 });
+  await v.show(); // second lookup finishes first
+  await tick();
+  release();
+  await tick();
+  await tick();
+  assert.equal(lastModel(v).model, "NEW");
+  assert.ok(modelStates(v).every((m) => m.model !== "OLD"));
+  v.dispose();
+});
+
+test("model lookups use no chat endpoint and send no editor or file content", async () => {
+  nextModelInfo = () => new Response(JSON.stringify({ provider: "Ollama", model: "qwen2.5-coder:7b" }), { status: 200 });
+  calls.fetch.length = 0;
+  const v = resolve();
+  await tick();
+  assert.equal(calls.fetch.length, 0, "no POST /v1/chat is made to learn the model name");
+  v.dispose();
 });
 
 test.after(() => {

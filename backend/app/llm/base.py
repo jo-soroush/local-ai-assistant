@@ -8,10 +8,22 @@ class ChatMessage:
     content: str
 
 
+@dataclass(frozen=True)
+class ModelInfo:
+    """What the backend is configured to use. Says nothing about whether the model is loaded or healthy."""
+
+    provider: str
+    model: str
+
+
 class LLMProvider(Protocol):
     """Provider-neutral chat interface. Implementations hide all wire-format details."""
 
     async def generate(self, messages: list[ChatMessage]) -> str: ...
+
+    def model_info(self) -> ModelInfo:
+        """Configured provider and model name. Must not contact the model server."""
+        ...
 
 
 class LLMError(Exception):

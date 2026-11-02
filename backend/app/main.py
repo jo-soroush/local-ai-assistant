@@ -12,7 +12,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from .llm.base import LLMError, LLMProvider
 from .llm.factory import get_provider
 from .prompt import build_messages
-from .schemas import MAX_MESSAGE_CHARS, ChatRequest, ChatResponse
+from .schemas import MAX_MESSAGE_CHARS, ChatRequest, ChatResponse, ModelInfoResponse
 
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
@@ -128,6 +128,13 @@ async def unhandled_error(request: Request, exc: Exception):
 @app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/v1/model-info", response_model=ModelInfoResponse)
+async def model_info(provider: LLMProvider = Depends(get_provider)) -> ModelInfoResponse:
+    """The configured provider and model name. Read from settings only: the model is not contacted."""
+    info = provider.model_info()
+    return ModelInfoResponse(provider=info.provider, model=info.model)
 
 
 @app.post("/v1/chat", response_model=ChatResponse)

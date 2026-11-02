@@ -5,7 +5,7 @@ import uuid
 import pytest
 from fastapi.testclient import TestClient
 
-from app.llm.base import ChatMessage
+from app.llm.base import ChatMessage, ModelInfo
 from app.llm.factory import get_provider
 from app.main import DEFAULT_HOST, DEFAULT_PORT, MAX_BODY_BYTES, app
 from app.schemas import MAX_MESSAGE_CHARS
@@ -20,6 +20,9 @@ class FakeProvider:
     async def generate(self, messages):
         self.calls.append(messages)
         return f"fake reply to: {messages[-1].content}"
+
+    def model_info(self):
+        return ModelInfo(provider="Ollama", model="qwen2.5-coder:7b")
 
 
 @pytest.fixture(autouse=True)
@@ -44,6 +47,47 @@ def test_health():
     resp = client.get("/health")
     assert resp.status_code == 200
     assert resp.json() == {"status": "ok"}
+
+
+def test_model_info_returns_configured_provider_and_model(fake_provider):
+    resp = client.get("/v1/model-info")
+    assert resp.status_code == 200
+    assert resp.json() == {"provider": "Ollama", "model": "qwen2.5-coder:7b"}
+    assert fake_provider.calls == [], "the model must not be asked anything"
+    assert resp.headers["X-Request-ID"]
+
+
+def test_model_info_reflects_custom_runtime_configuration(monkeypatch):
+    # No provider override: use the real factory with a custom environment.
+    app.dependency_overrides.clear()
+    monkeypatch.setenv("RISE_OLLAMA_MODEL", "my-custom-model:3b")
+    get_provider.cache_clear()
+
+    def no_network(*args, **kwargs):
+        raise AssertionError("model-info must not contact Ollama")
+
+    monkeypatch.setattr("app.llm.ollama.httpx.AsyncClient", no_network)
+    try:
+        resp = client.get("/v1/model-info")
+    finally:
+        get_provider.cache_clear()
+    assert resp.status_code == 200
+    assert resp.json() == {"provider": "Ollama", "model": "my-custom-model:3b"}
+
+
+def test_model_info_default_model_comes_from_settings(monkeypatch):
+    app.dependency_overrides.clear()
+    monkeypatch.delenv("RISE_OLLAMA_MODEL", raising=False)
+    get_provider.cache_clear()
+    try:
+        resp = client.get("/v1/model-info")
+    finally:
+        get_provider.cache_clear()
+    assert resp.json()["model"] == "qwen2.5-coder:7b"
+
+
+def test_model_info_rejects_post():
+    assert_error(client.post("/v1/model-info", json={}), 405, "method_not_allowed")
 
 
 def test_chat_returns_provider_reply(fake_provider):

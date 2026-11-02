@@ -11,6 +11,17 @@ const MAX_TIMEOUT_MS = 180000;
 
 export class BackendError extends Error {}
 
+/** The backend could not be reached at all (connection refused, or no answer in time). */
+export class BackendOfflineError extends BackendError {}
+
+const MODEL_INFO_TIMEOUT_MS = 3000;
+const MAX_INFO_CHARS = 200;
+
+export interface ModelInfo {
+  provider: string;
+  model: string;
+}
+
 export interface ChatResult {
   requestId: string;
   reply: string;
@@ -115,4 +126,40 @@ export async function postChat(
     throw new BackendError("Backend returned a malformed response.");
   }
   return { requestId: d.request_id, reply: d.reply };
+}
+
+/**
+ * Asks the backend which provider and model it is configured to use (GET /v1/model-info).
+ * The model itself is never asked. Throws BackendOfflineError if the backend cannot be reached,
+ * and BackendError for anything else that is wrong (bad URL, HTTP error, malformed answer).
+ */
+export async function getModelInfo(baseUrl: string): Promise<ModelInfo> {
+  const origin = validateBackendUrl(baseUrl);
+  let response: Response;
+  let text: string;
+  try {
+    response = await fetch(`${origin}/v1/model-info`, {
+      method: "GET",
+      signal: AbortSignal.timeout(MODEL_INFO_TIMEOUT_MS),
+      redirect: "error",
+    });
+    text = await response.text();
+  } catch {
+    throw new BackendOfflineError(`Cannot reach backend at ${origin}.`);
+  }
+  if (!response.ok) {
+    throw new BackendError(`Backend error: HTTP ${response.status}.`);
+  }
+  let data: unknown;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    throw new BackendError("Backend returned a malformed (non-JSON) response.");
+  }
+  const d = data as { provider?: unknown; model?: unknown } | null;
+  const ok = (v: unknown): v is string => typeof v === "string" && v.trim() !== "" && v.length <= MAX_INFO_CHARS;
+  if (!d || !ok(d.provider) || !ok(d.model)) {
+    throw new BackendError("Backend returned a malformed model-info response.");
+  }
+  return { provider: d.provider, model: d.model };
 }

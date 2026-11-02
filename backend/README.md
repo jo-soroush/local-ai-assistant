@@ -3,14 +3,15 @@
 FastAPI backend. `/v1/chat` returns real replies from a **local Ollama model** through a provider-neutral adapter (`app/llm/`). Binds to loopback only. No cloud inference.
 
 ## Setup
+Full step-by-step instructions (Ollama, model, install, checks) are in the [root README](../README.md). In short, from the repository root:
 ```bash
 cd backend
-python3.13 -m venv .venv          # already present in this repo
+python3.13 -m venv .venv          # creates a fresh environment (it is not stored in git)
 .venv/bin/python -m pip install -r requirements-dev.txt
 ```
 
 ## Ollama prerequisites
-The application never downloads models. Before testing, make sure Ollama is running and the model exists:
+The application never downloads models. Before using the backend, make sure Ollama is running and the model exists:
 ```bash
 ollama list                                   # model must appear, e.g. qwen2.5-coder:7b
 curl http://127.0.0.1:11434/api/tags          # same check via the API
@@ -40,6 +41,7 @@ curl -X POST http://127.0.0.1:8765/v1/chat -H 'Content-Type: application/json' -
 
 ## API
 - `GET /health` -> `{"status":"ok"}`
+- `GET /v1/model-info` -> `{"provider":"Ollama","model":"<RISE_OLLAMA_MODEL>"}`: the configured provider and model name, read from the backend's settings. It does not contact Ollama, so it does not show that the model is installed, loaded or healthy. The extension shows it at the top of the chat.
 - `POST /v1/chat` `{"message": "<1..4000 chars, not blank>"}` -> `{"request_id","reply"}` (model-generated)
 - Optional `context` on `/v1/chat`: `{kind: selection|file, path (workspace-relative), language?, start_line, end_line, text (<=16,000 chars)}`. The path is display metadata only; the backend never opens files. Code is passed to the model in a fenced block marked as data.
 - Optional `tool_results` on `/v1/chat` (max 1 item): `{tool: "read_file", path (workspace-relative), start_line, end_line, text (<=16,000 chars)}`. The extension reads the file the user picked; the backend never opens the path and the text is passed to the model in a fenced block marked as data. Tool use is user-initiated, not model-driven.

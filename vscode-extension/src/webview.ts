@@ -12,6 +12,8 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
   .msg { margin: 6px 0; padding: 6px 8px; border-radius: 4px; background: var(--vscode-editor-inactiveSelectionBackground); }
   .user { font-weight: bold; }
   .note { opacity: 0.75; font-size: 0.9em; }
+  #model { margin: 0 0 8px; font-size: 0.9em; white-space: pre-line; }
+  #model.warn { color: var(--vscode-errorForeground); }
   #ctx { margin: 6px 0; font-size: 0.9em; }
   #att { margin: 6px 0; font-size: 0.9em; }
   #ctx.warn { color: var(--vscode-errorForeground); }
@@ -20,6 +22,7 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
 </style>
 </head>
 <body>
+<div id="model" title="Configured in the backend. Not checked against the model server.">Checking backend…</div>
 <div id="log"></div>
 <div id="ctx"></div>
 <label><input type="checkbox" id="useContext" checked> Include editor context</label>
@@ -32,6 +35,21 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
   const input = document.getElementById('input');
   const useContext = document.getElementById('useContext');
   const ctx = document.getElementById('ctx');
+  const model = document.getElementById('model');
+  function renderModel(m) {
+    model.className = '';
+    if (m.state === 'ok') {
+      model.textContent = 'Model: ' + m.model + '\\nProvider: ' + m.provider;
+    } else if (m.state === 'offline') {
+      model.className = 'warn';
+      model.textContent = 'Backend offline';
+    } else if (m.state === 'unavailable') {
+      model.className = 'warn';
+      model.textContent = 'Model info unavailable';
+    } else {
+      model.textContent = 'Checking backend…';
+    }
+  }
   let ctxState = { ok: false, text: 'Checking editor…' };
   function renderCtx() {
     if (!useContext.checked) {
@@ -77,6 +95,7 @@ export function getWebviewHtml(nonce: string, cspSource: string): string {
       attText.textContent = e.data.text ? 'Will send file: ' + e.data.text : '';
       detach.hidden = !e.data.text;
     }
+    else if (e.data.type === 'modelInfo') { renderModel(e.data); }
     else if (e.data.type === 'context') { ctxState = { ok: !!e.data.ok, text: String(e.data.text) }; renderCtx(); }
   });
 </script>

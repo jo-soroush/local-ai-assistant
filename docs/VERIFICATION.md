@@ -2,6 +2,8 @@
 
 Baseline commit `939d71c` plus the uncommitted C06 changes (prompt wording, tests, documentation). Last updated 2026-11-02.
 
+**Later addition (2026-11-02):** the model-information display (`GET /v1/model-info` and the chat header). Its results are recorded separately in sections 1.5 and 1.6. Sections 1.1 to 1.4 and 2 are earlier evidence and are kept as they were; they were **not** re-run for the latest numbers and must not be read as the latest results.
+
 Status labels:
 - **VERIFIED**: evidence produced by commands run for this record (output below), by Claude Code or by the independent Codex audit.
 - **OWNER-REPORTED**: confirmed manually by the owner on their Mac; not independently reproduced.
@@ -53,6 +55,49 @@ Run in a sandbox that forbids binding local sockets, so it could not execute eve
 
 Limits: this is a text search, not a network capture. It shows no unexpected network paths in the application code; it does not prove there is no traffic from VS Code itself, Ollama or the OS.
 
+### 1.5 Latest automated run, after the model-information feature (VERIFIED, 2026-11-02)
+
+Run by Claude Code **outside the restricted sandbox** (sandbox disabled for these commands, loopback sockets allowed), from the repository root with the working tree as of this feature. This supersedes the counts in 1.1 to 1.3 for the current code; those rows remain as history.
+
+| Check | Command | Result | Status |
+|---|---|---|---|
+| Backend tests | `cd backend && .venv/bin/python -m pytest -q` | **122 passed**, 1 warning (Starlette `httpx` deprecation notice) | VERIFIED — PASS |
+| TypeScript tests | `cd vscode-extension && npm test` | **121 passed**, 0 failed (121 run) | VERIFIED — PASS |
+| TypeScript typecheck | `cd vscode-extension && npm run typecheck` | exit 0 | VERIFIED — PASS |
+
+Notes:
+- This run was made by Claude Code on the developer's Mac and has not been repeated by the independent reviewer or the owner.
+- Earlier in the same session, the same suites were also run **inside** the sandbox. They did not complete there: TypeScript 112 passed and 9 failed, all with `listen EPERM` (8 existing `postChat` tests in `client.test.ts` plus the new real-server model-info test); Python 121 passed and 1 failed (`test_environment_proxies_are_ignored`, a socket `PermissionError`). Those failures are the sandbox restriction described in 1.3, not code defects, and the tests pass outside the sandbox as shown above. Another test failed once outside the sandbox (`test_route_and_extension_do_not_contain_ollama_wire_format`), because a tooltip text in the webview contained the word "Ollama"; the text was reworded and the suite passed. The counts in the table are from the final run.
+- The earlier TypeScript count of 79 (1.1 to 1.3) predates this run. How the suite grew from 79 to 121 is not itemised here; only the 18 tests of this feature are (see 1.6). The earlier Python count of 118 plus the 4 new tests of this feature gives 122.
+
+### 1.6 Model-information display: what it is and how it is tested
+
+**Feature (IMPLEMENTED).** The chat view shows `Model:` and `Provider:`, or `Backend offline` / `Model info unavailable`. The values come from `GET /v1/model-info`, which returns the provider and model name from the backend's runtime configuration (`RISE_OLLAMA_MODEL`, default `qwen2.5-coder:7b`). The language model is not asked, and Ollama is not contacted. The extension asks when the view opens, when it is shown again, and after a failed question. The display shows the **configured** name only. It does not show that Ollama is running, that the model is installed or loaded, or that it is generating.
+
+**Automated coverage (VERIFIED by the run in 1.5; 22 new tests):**
+
+| Area | Tests | What they check |
+|---|---|---|
+| Backend, `backend/tests/test_api.py` | 4 | Endpoint returns the configured provider and model without calling the model; a custom `RISE_OLLAMA_MODEL` is reported, with the Ollama HTTP client replaced by one that fails if used; the default model comes from settings; `POST` is refused (405). |
+| Extension client, `src/test/client.test.ts` | 6 | `GET /v1/model-info` with redirects refused; unreachable backend and timeout become an offline error; HTTP errors and malformed or oversized answers become a different error (not "offline"); non-loopback, non-http and credential URLs are rejected before any request; against a real local server, then the same server stopped. |
+| Chat page, `src/test/webview-model.test.ts` | 5 | The generated page script is valid and starts as "Checking backend…"; model and provider are drawn on two lines; offline replaces the model text and leaves no model name; "unavailable" and "checking" show no model; the page text makes no loaded/healthy/generating claim. Uses a small fake page, not a real webview. |
+| Extension wiring, `src/test/sidebar-wiring.test.ts` | 7 | The real `extension.ts` against a fake `vscode`: model shown when the view opens; offline shows no model name; re-showing the view re-checks and replaces an old model with offline; a failed chat re-checks; a successful chat does not; an older slow answer cannot overwrite a newer one; no chat request is made to learn the model name. |
+
+Limits of this coverage: the tests use fakes for `vscode` and for the page. They do not show how the display looks or behaves in a real VS Code window.
+
+### 1.7 Independent validation after the model-information feature (VERIFIED, 2026-11-02)
+
+Run by the independent reviewer against baseline commit `5641918` plus the uncommitted working-tree changes. This repeats, independently, the Claude Code run in 1.5.
+
+| Check | Result | Status |
+|---|---|---|
+| Python tests | 122 passed | VERIFIED — PASS |
+| TypeScript tests | 121 passed | VERIFIED — PASS |
+| TypeScript typecheck | PASS | VERIFIED — PASS |
+| `git diff --check` | PASS | VERIFIED — PASS |
+
+The "has not been repeated by the independent reviewer" note in 1.5 is superseded for the test counts by this row; the rest of 1.5 stays as written.
+
 ## 2. Manual GUI scenarios (owner's Mac, VS Code Extension Development Host)
 
 All rows in this section are **OWNER-REPORTED** (result: PASS) unless stated.
@@ -77,6 +122,14 @@ All rows in this section are **OWNER-REPORTED** (result: PASS) unless stated.
 
 The listener check shows which addresses the two services are bound to. It does **not** show that the system makes no outbound connections or sends nothing off the machine; that is not claimed.
 
+### 2.1 Model-information display in normal VS Code (OWNER-REPORTED)
+
+| Scenario | Result |
+|---|---|
+| Model and provider lines shown in the chat view in the normal VS Code window (installed extension) | PASS — OWNER-REPORTED |
+
+Only this scenario was reported. The offline, custom-model and tooltip scenarios were not reported and remain UNVERIFIED (section 3).
+
 ## 3. Items still UNVERIFIED
 
 | Item | Status | Note |
@@ -86,6 +139,7 @@ The listener check shows which addresses the two services are bound to. It does 
 | README setup and run steps followed from a fresh checkout | UNVERIFIED | |
 | Oversized whole active file (no selection) rejected in the GUI | UNVERIFIED | Only the oversized selection was run in the GUI; both paths are covered by unit tests. |
 | Binary or over-64 KiB file attachment refused in the GUI | UNVERIFIED | Unit tests cover it. |
+| **Model-information display in the real VS Code GUI: remaining scenarios** (`Backend offline` after stopping the backend and re-showing the view; the display after changing `RISE_OLLAMA_MODEL` and restarting the backend; tooltip) | **UNVERIFIED** | The model and provider lines in normal VS Code are OWNER-REPORTED as working (2.1). The scenarios listed here have not been confirmed. The automated tests in 1.5 and 1.6 use fakes. Not claimed as passed. |
 | Real-model tool-calling reliability | UNVERIFIED | Out of scope by decision; tools are user-driven. |
 | Windows and Linux | UNVERIFIED | Only macOS has been used. |
 
